@@ -27,11 +27,14 @@ import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.WindowConstants;
 import java.lang.Math;
+import java.math.BigInteger;
 import java.util.concurrent.ThreadLocalRandom;
 
 import java.net.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.Random;
+
 
 /**
  *
@@ -49,7 +52,7 @@ public class P2PClient extends JFrame implements ActionListener
     private final JTextArea ta;
     protected boolean keepGoing;
     JButton send, start;
-    long a, b, p, g, A, B, K;
+    BigInteger a, b, p, g, A, B, K;
 
     P2PClient(){
         super("P2P Client Chat");
@@ -130,8 +133,8 @@ public class P2PClient extends JFrame implements ActionListener
         }
         if(o == start){
             new ListenFromClient().start();
-            p = 23;
-            g = 5;
+            p = new BigInteger("0f52e524f5fa9ddcc6abe604e420898ab4bf27b54a9557a106e73073835ec92311ed4245ac49d3e3f33473c57d003c866374e07597841d0b11da04d0fe4fb037df57222e9642e07cd75e4629afb1f481affc9aeffa899e0afb16e38f01a2c8ddb44712f82909136e9da8f95d08003a8ca7ff6ccfe37c3b6bb426ccda89930173a8553e5b77258f27a3f1bf7a731f85960c4514c106b71c75aa10bc8698754470d10f20f4ac4cb388161c7ea327e4ade1a1854f1a220d0542736945c92ff7c248e3ce9d745853e7a78218d93dafab409faa4c780ac3242ddb12a954e54787ac52fee83d0b56ed9c9fff39e5e5bf62324208ae6aed880eb31a4cd308e4c4aa2cccb137a5c1a9647eebf9d3f51528fe2ee27ffed9b938425703",16);
+            g = new BigInteger("2");
             this.send("__KEY_EXCHANGE_1__p:" + String.valueOf(p) + "g:" + String.valueOf(g) + ";");
         }
     }
@@ -170,7 +173,7 @@ public class P2PClient extends JFrame implements ActionListener
             if(!str.startsWith("__KEY_EXCHANGE_")){
                 display("You: " + str);
             } else {
-                display(("Key exchange..."));
+                display("Key exchange...");
             }
             sOutput.close();
             socket.close();
@@ -218,32 +221,32 @@ public class P2PClient extends JFrame implements ActionListener
                         String msg = ((ChatMessage) sInput.readObject()).getMessage();
                         System.out.println("Msg:"+msg);
                         if(msg.startsWith("__KEY_EXCHANGE_1__")){ //bob
-                            p = Long.parseLong(msg.substring(msg.lastIndexOf("p:") + 2, msg.lastIndexOf("g:")));
-                            g = Long.parseLong(msg.substring(msg.lastIndexOf("g:") + 2, msg.lastIndexOf(";")));
-                            a = (long) Math.abs(ThreadLocalRandom.current().nextInt(0,10));
-                            A = (long)(Math.pow(g, a) % p);
+                            p = new BigInteger(msg.substring(msg.lastIndexOf("p:") + 2, msg.lastIndexOf("g:")));
+                            g = new BigInteger(msg.substring(msg.lastIndexOf("g:") + 2, msg.lastIndexOf(";")));
+
+                            a = new BigInteger(10, new Random()).abs();
+                            A = g.modPow(a, p);
                             System.out.println("Bob p=" + p + ", g=" + g + ", a=" + a + ", A=" + A + ";");
                             send("__KEY_EXCHANGE_2__A:" + String.valueOf(A) + ";");
                         }
                         else if(msg.startsWith("__KEY_EXCHANGE_2__")){ //alice
-                            A = Long.parseLong(msg.substring(msg.lastIndexOf("A:") + 2, msg.lastIndexOf(";")));
-                            b = (long) Math.abs(ThreadLocalRandom.current().nextInt(0,20));
-                            B = (long)(Math.pow(g, b) % p);
+                            A = new BigInteger(msg.substring(msg.lastIndexOf("A:") + 2, msg.lastIndexOf(";")));
+                            b = new BigInteger(10, new Random()).abs();
+                            B = g.modPow(b, p);
                             System.out.println(B);
-                            K = (long)(Math.pow(A, b) % p);
+                            K = A.modPow(b, p);
                             System.out.println(K);
                             send("__KEY_EXCHANGE_3__B:" + String.valueOf(B) + ";");
 
                             System.out.println("Alice 2 p=" + p + ", g=" + g + ", A=" + A + ", b=" + b + ", B=" + B + ", K=" + K);
-                            display("Connection succeeded");
                         }
                         else if(msg.startsWith("__KEY_EXCHANGE_3__")){//bob
-                            B = Long.parseLong(msg.substring(msg.lastIndexOf("B:") + 2, msg.lastIndexOf(";")));
-                            K = (long)(Math.pow(B, a) % p);
+                            B = new BigInteger(msg.substring(msg.lastIndexOf("B:") + 2, msg.lastIndexOf(";")));
+                            K = B.modPow(a, p);
 
                             System.out.println("Bob 3 p=" + p + ", g=" + g + ", A=" + A + ", a=" + a + ", B=" + B + ", K=" + K);
-                            display("Connection succeeded");
                         }
+
 
                         else {
                             display(socket.getInetAddress()+": " + socket.getPort() + ": " +msg);
