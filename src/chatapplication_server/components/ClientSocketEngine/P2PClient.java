@@ -24,6 +24,8 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.WindowConstants;
+import java.lang.Math;
+import java.util.concurrent.ThreadLocalRandom;
 
 import java.net.*;
 import java.util.logging.Level;
@@ -33,7 +35,7 @@ import java.util.logging.Logger;
  *
  * @author atgianne
  */
-public class P2PClient extends JFrame implements ActionListener 
+public class P2PClient extends JFrame implements ActionListener
 {
     private String host;
     private String port;
@@ -45,12 +47,13 @@ public class P2PClient extends JFrame implements ActionListener
     private final JTextArea ta;
     protected boolean keepGoing;
     JButton send, start;
-    
+    long a, b, p, g, A, B, K;
+
     P2PClient(){
         super("P2P Client Chat");
         host=ConfigManager.getInstance().getValue( "Server.Address" );
         port=ConfigManager.getInstance().getValue( "Server.PortNumber" );
-        
+
         // The NorthPanel with:
         JPanel northPanel = new JPanel(new GridLayout(3,1));
         // the server name anmd the port number
@@ -59,7 +62,7 @@ public class P2PClient extends JFrame implements ActionListener
         tfServer = new JTextField(host);
         tfPort = new JTextField("" + port);
         tfPort.setHorizontalAlignment(SwingConstants.RIGHT);
-        
+
         tfsPort=new JTextField(5);
         tfsPort.setHorizontalAlignment(SwingConstants.RIGHT);
         start=new JButton("Start");
@@ -80,7 +83,7 @@ public class P2PClient extends JFrame implements ActionListener
         tf.setBackground(Color.WHITE);
         northPanel.add(tf);
         add(northPanel, BorderLayout.NORTH);
-        
+
         // The CenterPanel which is the chat room
         ta = new JTextArea(" ", 80, 80);
         JPanel centerPanel = new JPanel(new GridLayout(1,1));
@@ -89,10 +92,10 @@ public class P2PClient extends JFrame implements ActionListener
 
 //        ta2 = new JTextArea(80,80);
 //        ta2.setEditable(false);
-//        centerPanel.add(new JScrollPane(ta2));   
+//        centerPanel.add(new JScrollPane(ta2));
         add(centerPanel, BorderLayout.CENTER);
-        
-        
+
+
         send = new JButton("Send");
         send.addActionListener(this);
         JPanel southPanel = new JPanel();
@@ -103,7 +106,7 @@ public class P2PClient extends JFrame implements ActionListener
         tfsPort.setText("0");
         southPanel.add(tfsPort);
         add(southPanel, BorderLayout.SOUTH);
-        
+
         this.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 
 //        setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -111,7 +114,7 @@ public class P2PClient extends JFrame implements ActionListener
         setVisible(true);
         tf.requestFocus();
     }
-    
+
     @Override
     public void actionPerformed(ActionEvent e) {
         Object o = e.getSource();
@@ -125,102 +128,135 @@ public class P2PClient extends JFrame implements ActionListener
         }
         if(o == start){
             new ListenFromClient().start();
+            p = 23;
+            g = 5;
+            this.send("__KEY_EXCHANGE_1__p:" + String.valueOf(p) + "g:" + String.valueOf(g) + ";");
         }
     }
-    
+
     public void display(String str) {
         ta.append(str + "\n");
         ta.setCaretPosition(ta.getText().length() - 1);
     }
-    
+
     public boolean send(String str){
         Socket socket;
         ObjectOutputStream sOutput;		// to write on the socket
         // try to connect to the server
-            try {
-                    socket = new Socket(tfServer.getText(), Integer.parseInt(tfPort.getText()));
-            } 
-            // if it failed not much I can so
-            catch(Exception ec) {
-                    display("Error connectiong to server:" + ec.getMessage() + "\n");
-                    return false;
-            }
+        try {
+            socket = new Socket(tfServer.getText(), Integer.parseInt(tfPort.getText()));
+        }
+        // if it failed not much I can so
+        catch(Exception ec) {
+            display("Error connecting to server:" + ec.getMessage() + "\n");
+            return false;
+        }
 
-            /* Creating both Data Stream */
-            try
-            {
+        /* Creating both Data Stream */
+        try
+        {
 //			sInput  = new ObjectInputStream(socket.getInputStream());
-                    sOutput = new ObjectOutputStream(socket.getOutputStream());
-            }
-            catch (IOException eIO) {
-                    display("Exception creating new Input/output Streams: " + eIO);
-                    return false;
-            }
+            sOutput = new ObjectOutputStream(socket.getOutputStream());
+        }
+        catch (IOException eIO) {
+            display("Exception creating new Input/output Streams: " + eIO);
+            return false;
+        }
 
         try {
             sOutput.writeObject(new ChatMessage(str.length(), str));
-            display("You: " + str);
+            if(!str.startsWith("__KEY_EXCHANGE_")){
+                display("You: " + str);
+            }
             sOutput.close();
             socket.close();
         } catch (IOException ex) {
             display("Exception creating new Input/output Streams: " + ex);
         }
 
-         return true;
+        return true;
     }
-    
+
     private class ListenFromClient extends Thread{
-            public ListenFromClient() {
-                keepGoing=true;
-            }
+        public ListenFromClient() {
+            keepGoing=true;
+        }
 
-            @Override
-            public void run() {
-                try 
-		{ 
-			// the socket used by the server
-			ServerSocket serverSocket = new ServerSocket(Integer.parseInt(tfsPort.getText()));
-                        //display("Server is listening on port:"+tfsPort.getText());
-                        ta.append("Server is listening on port:"+tfsPort.getText() + "\n");
-                        ta.setCaretPosition(ta.getText().length() - 1);
+        @Override
+        public void run() {
+            try
+            {
+                // the socket used by the server
+                ServerSocket serverSocket = new ServerSocket(Integer.parseInt(tfsPort.getText()));
+                //display("Server is listening on port:"+tfsPort.getText());
+                ta.append("Server is listening on port:"+tfsPort.getText() + "\n");
+                ta.setCaretPosition(ta.getText().length() - 1);
 
-			// infinite loop to wait for connections
-			while(keepGoing) 
-			{
-                            // format message saying we are waiting
+                // infinite loop to wait for connections
+                while(keepGoing)
+                {
+                    // format message saying we are waiting
 
-                            Socket socket = serverSocket.accept();  	// accept connection
+                    Socket socket = serverSocket.accept();  	// accept connection
 
-                            ObjectInputStream sInput=null;		// to write on the socket
+                    ObjectInputStream sInput=null;		// to write on the socket
 
-                            /* Creating both Data Stream */
-                            try
-                            {
-                                    sInput = new ObjectInputStream(socket.getInputStream());
-                            }
-                            catch (IOException eIO) {
-                                    display("Exception creating new Input/output Streams: " + eIO);
-                            }
+                    /* Creating both Data Stream */
+                    try
+                    {
+                        sInput = new ObjectInputStream(socket.getInputStream());
+                    }
+                    catch (IOException eIO) {
+                        display("Exception creating new Input/output Streams: " + eIO);
+                    }
 
-                            try {
-                                String msg = ((ChatMessage) sInput.readObject()).getMessage();
-                                System.out.println("Msg:"+msg);
-                                display(socket.getInetAddress()+": " + socket.getPort() + ": " + msg);
-                                sInput.close();
-                                socket.close();
-                            } catch (IOException ex) {
-                                display("Exception creating new Input/output Streams: " + ex);
-                            } catch (ClassNotFoundException ex) {
-                                Logger.getLogger(P2PClient.class.getName()).log(Level.SEVERE, null, ex);
-                            }
-
+                    try {
+                        String msg = ((ChatMessage) sInput.readObject()).getMessage();
+                        System.out.println("Msg:"+msg);
+                        if(msg.startsWith("__KEY_EXCHANGE_1__")){ //bob
+                            p = Long.parseLong(msg.substring(msg.lastIndexOf("p:") + 2, msg.lastIndexOf("g:")));
+                            g = Long.parseLong(msg.substring(msg.lastIndexOf("g:") + 2, msg.lastIndexOf(";")));
+                            a = (long) Math.abs(ThreadLocalRandom.current().nextInt(0,10));
+                            A = (long)(Math.pow(g, a) % p);
+                            System.out.println("Bob p=" + p + ", g=" + g + ", a=" + a + ", A=" + A + ";");
+                            send("__KEY_EXCHANGE_2__A:" + String.valueOf(A) + ";");
                         }
-		}
-		// something went bad
-		catch (IOException e) {
+                        else if(msg.startsWith("__KEY_EXCHANGE_2__")){ //alice
+                            A = Long.parseLong(msg.substring(msg.lastIndexOf("A:") + 2, msg.lastIndexOf(";")));
+                            b = (long) Math.abs(ThreadLocalRandom.current().nextInt(0,20));
+                            B = (long)(Math.pow(g, b) % p);
+                            System.out.println(B);
+                            K = (long)(Math.pow(A, b) % p);
+                            System.out.println(K);
+                            send("__KEY_EXCHANGE_3__B:" + String.valueOf(B) + ";");
+
+                            System.out.println("Alice 2 p=" + p + ", g=" + g + ", A=" + A + ", b=" + b + ", B=" + B + ", K=" + K);
+                        }
+                        else if(msg.startsWith("__KEY_EXCHANGE_3__")){//bob
+                            B = Long.parseLong(msg.substring(msg.lastIndexOf("B:") + 2, msg.lastIndexOf(";")));
+                            K = (long)(Math.pow(B, a) % p);
+
+                            System.out.println("Bob 3 p=" + p + ", g=" + g + ", A=" + A + ", a=" + a + ", B=" + B + ", K=" + K);
+                        }
+
+                        else {
+                            display(socket.getInetAddress()+": " + socket.getPort() + ": " + msg);
+                        }
+                        sInput.close();
+                        socket.close();
+                    } catch (IOException ex) {
+                        display("Exception creating new Input/output Streams: " + ex);
+                    } catch (ClassNotFoundException ex) {
+                        Logger.getLogger(P2PClient.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+
+                }
+            }
+            // something went bad
+            catch (IOException e) {
 //            String msg = sdf.format(new Date()) + " Exception on new ServerSocket: " + e + "\n";
 //			display(msg);
-		}
-	}		
+            }
+        }
     }
 }

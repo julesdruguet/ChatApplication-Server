@@ -352,8 +352,8 @@ public class SocketConnectionHandler implements Runnable
                     SocketServerEngine.getInstance().printEstablishedSocketInfo();
                     break;
                 case ChatMessage.PRIVATEMESSAGE:
-                    String temp[] = cm.getMessage().split(",");
-                    int PortNo = Integer.valueOf(temp[0]);
+                    String temp[] = decrypt(cm.getMessage()).split(",");
+                    int PortNo = Integer.parseInt(temp[0]);
                     String Chat = temp[1];
 
                     System.out.println("At Server :  " +PortNo +temp[1]);
@@ -406,9 +406,7 @@ public class SocketConnectionHandler implements Runnable
            // write the message to the stream
            try 
            {
-               String encryptedMsg = encrypt(msg);
-               SocketServerGUI.getInstance().appendEvent(encryptedMsg);
-               socketWriter.writeObject(encryptedMsg);
+               socketWriter.writeObject(msg);
            }
            // if an error occurs, do not abort just inform the user
            catch( IOException e ) 

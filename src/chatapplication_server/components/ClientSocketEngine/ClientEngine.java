@@ -8,6 +8,7 @@ package chatapplication_server.components.ClientSocketEngine;
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.ServerSocketEngine.SocketConnectionHandler;
 import chatapplication_server.components.ServerSocketEngine.SocketServerEngine;
 import chatapplication_server.components.ServerSocketEngine.SocketServerGUI;
 import chatapplication_server.components.base.GenericThreadedComponent;
@@ -146,6 +147,7 @@ public class ClientEngine extends GenericThreadedComponent
     {
         try 
         {
+
             socketWriter.writeObject(msg);
         }
         catch( IOException e ) 
@@ -174,7 +176,9 @@ public class ClientEngine extends GenericThreadedComponent
             
             // read message from user
             //String msg = scan.nextLine();
-            String msg = ClientSocketGUI.getInstance().getPublicMsgToBeSent();
+            String readMsg = ClientSocketGUI.getInstance().getPublicMsgToBeSent();
+            String msg = SocketConnectionHandler.encrypt(readMsg);
+
             if ( msg.equals( "" ) )
                 continue;
                 
