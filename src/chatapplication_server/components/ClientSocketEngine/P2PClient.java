@@ -7,6 +7,8 @@ package chatapplication_server.components.ClientSocketEngine;
 
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.ServerSocketEngine.SocketConnectionHandler;
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.GridLayout;
@@ -124,7 +126,7 @@ public class P2PClient extends JFrame implements ActionListener
                 display( "Cannot give the same port number as the Chat Application Server - Please give the port number of the peer client to communicate!\n" );
                 return;
             }
-            this.send(tf.getText());
+            this.send(SocketConnectionHandler.encrypt(tf.getText(), String.valueOf(this.K)));
         }
         if(o == start){
             new ListenFromClient().start();
@@ -167,6 +169,8 @@ public class P2PClient extends JFrame implements ActionListener
             sOutput.writeObject(new ChatMessage(str.length(), str));
             if(!str.startsWith("__KEY_EXCHANGE_")){
                 display("You: " + str);
+            } else {
+                display(("Key exchange..."));
             }
             sOutput.close();
             socket.close();
@@ -231,16 +235,18 @@ public class P2PClient extends JFrame implements ActionListener
                             send("__KEY_EXCHANGE_3__B:" + String.valueOf(B) + ";");
 
                             System.out.println("Alice 2 p=" + p + ", g=" + g + ", A=" + A + ", b=" + b + ", B=" + B + ", K=" + K);
+                            display("Connection succeeded");
                         }
                         else if(msg.startsWith("__KEY_EXCHANGE_3__")){//bob
                             B = Long.parseLong(msg.substring(msg.lastIndexOf("B:") + 2, msg.lastIndexOf(";")));
                             K = (long)(Math.pow(B, a) % p);
 
                             System.out.println("Bob 3 p=" + p + ", g=" + g + ", A=" + A + ", a=" + a + ", B=" + B + ", K=" + K);
+                            display("Connection succeeded");
                         }
 
                         else {
-                            display(socket.getInetAddress()+": " + socket.getPort() + ": " + msg);
+                            display(socket.getInetAddress()+": " + socket.getPort() + ": " +msg);
                         }
                         sInput.close();
                         socket.close();

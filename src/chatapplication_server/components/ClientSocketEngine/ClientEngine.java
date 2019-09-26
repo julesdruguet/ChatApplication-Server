@@ -220,7 +220,7 @@ public class ClientEngine extends GenericThreadedComponent
          /** Close the secure socket server */
         try
         {
-            synchronized ( socket)
+            synchronized (socket)
             {                
                 /** Shut down the Client Socket */
                 socketReader.close();

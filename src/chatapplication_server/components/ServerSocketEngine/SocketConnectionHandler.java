@@ -463,7 +463,7 @@ public class SocketConnectionHandler implements Runnable
     /**
      * Method encrypting a given string with AES and CBC mode
      */
-    public static String encrypt(String value) {
+    public static String encrypt(String value, String key) {
         try {
             IvParameterSpec iv = new IvParameterSpec(initVector.getBytes(StandardCharsets.UTF_8));
             SecretKeySpec skeySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "AES");
@@ -479,10 +479,14 @@ public class SocketConnectionHandler implements Runnable
         return null;
     }
 
+    public static String encrypt(String value) {
+        return encrypt(value, key);
+    }
+
     /**
      * Method encrypting a given cipher with AES and CBC mode
      */
-    public static String decrypt(String encrypted) {
+    public static String decrypt(String encrypted, String key) {
         try {
             IvParameterSpec iv = new IvParameterSpec(initVector.getBytes(StandardCharsets.UTF_8));
             SecretKeySpec skeySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "AES");
@@ -497,5 +501,9 @@ public class SocketConnectionHandler implements Runnable
         }
 
         return null;
+    }
+
+    public static String decrypt(String encrypted) {
+        return decrypt(encrypted, key);
     }
 }
