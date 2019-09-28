@@ -28,12 +28,17 @@ import javax.swing.SwingConstants;
 import javax.swing.WindowConstants;
 import java.lang.Math;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 
 import java.net.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.Random;
+
+import static chatapplication_server.components.ServerSocketEngine.SocketConnectionHandler.decrypt;
+import static chatapplication_server.components.ServerSocketEngine.SocketConnectionHandler.encrypt;
 
 
 /**
@@ -53,6 +58,7 @@ public class P2PClient extends JFrame implements ActionListener
     protected boolean keepGoing;
     JButton send, start;
     BigInteger a, b, p, g, A, B, K;
+    private byte[] byteKey;
 
     P2PClient(){
         super("P2P Client Chat");
@@ -129,7 +135,7 @@ public class P2PClient extends JFrame implements ActionListener
                 display( "Cannot give the same port number as the Chat Application Server - Please give the port number of the peer client to communicate!\n" );
                 return;
             }
-            this.send(SocketConnectionHandler.encrypt(tf.getText(), String.valueOf(this.K)));
+            this.send(encrypt(tf.getText(), byteKey));
         }
         if(o == start){
             new ListenFromClient().start();
@@ -171,7 +177,7 @@ public class P2PClient extends JFrame implements ActionListener
         try {
             sOutput.writeObject(new ChatMessage(str.length(), str));
             if(!str.startsWith("__KEY_EXCHANGE_")){
-                display("You: " + str);
+                display("You: " + decrypt(str, byteKey));
             } else {
                 display("Key exchange...");
             }
@@ -233,23 +239,24 @@ public class P2PClient extends JFrame implements ActionListener
                             A = new BigInteger(msg.substring(msg.lastIndexOf("A:") + 2, msg.lastIndexOf(";")));
                             b = new BigInteger(10, new Random()).abs();
                             B = g.modPow(b, p);
-                            System.out.println(B);
                             K = A.modPow(b, p);
-                            System.out.println(K);
+                            byteKey = Arrays.copyOfRange(K.toByteArray(), 0, 16);
                             send("__KEY_EXCHANGE_3__B:" + String.valueOf(B) + ";");
 
                             System.out.println("Alice 2 p=" + p + ", g=" + g + ", A=" + A + ", b=" + b + ", B=" + B + ", K=" + K);
+                            display("Connection succeeded");
                         }
                         else if(msg.startsWith("__KEY_EXCHANGE_3__")){//bob
                             B = new BigInteger(msg.substring(msg.lastIndexOf("B:") + 2, msg.lastIndexOf(";")));
                             K = B.modPow(a, p);
-
+                            byteKey = Arrays.copyOfRange(K.toByteArray(), 0, 16);
                             System.out.println("Bob 3 p=" + p + ", g=" + g + ", A=" + A + ", a=" + a + ", B=" + B + ", K=" + K);
+                            display("Connection succeeded");
                         }
 
 
                         else {
-                            display(socket.getInetAddress()+": " + socket.getPort() + ": " +msg);
+                            display(socket.getInetAddress()+": " + socket.getPort() + ": " +decrypt(msg, byteKey));
                         }
                         sInput.close();
                         socket.close();
