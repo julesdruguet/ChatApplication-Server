@@ -253,8 +253,6 @@ public class P2PClient extends JFrame implements ActionListener
                             System.out.println("Bob 3 p=" + p + ", g=" + g + ", A=" + A + ", a=" + a + ", B=" + B + ", K=" + K);
                             display("Connection succeeded");
                         }
-
-
                         else {
                             display(socket.getInetAddress()+": " + socket.getPort() + ": " +decrypt(msg, byteKey));
                         }

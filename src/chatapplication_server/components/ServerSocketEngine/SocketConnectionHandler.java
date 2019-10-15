@@ -9,11 +9,7 @@ import SocketActionMessages.ChatMessage;
 import chatapplication_server.components.ConfigManager;
 import chatapplication_server.statistics.ServerStatistics;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OptionalDataException;
-import java.io.StreamCorruptedException;
+import java.io.*;
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -23,6 +19,14 @@ import java.net.*;
 import org.apache.commons.codec.binary.Base64;
 
 import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Vector;
 
 /**
@@ -294,7 +298,11 @@ public class SocketConnectionHandler implements Runnable {
              * thread will stay in this method during the lifetime of the assigned socket connection
              */
             if (handleConnection != null) {
-                receiveContent();
+                try {
+                    receiveContent();
+                } catch (CertificateException e) {
+                    e.printStackTrace();
+                }
 
                 /** If we finished the 'handling' of the assigned socket connection, add ourselves in the connectionHandling pool for future use */
                 socketConnectionHandlerRelease();
@@ -311,41 +319,50 @@ public class SocketConnectionHandler implements Runnable {
      * the stream is empty (client doesn't send anything), the SocketConnectionHandler remains idle and goes back to business
      * only when necessary!!
      */
-    public void receiveContent() {
+    public void receiveContent() throws CertificateException {
         while (isSocketOpen) {
             try {
                 /** Wait until there is something in the stream to be read... */
                 cm = (ChatMessage) socketReader.readObject();
 
-                String encryptedMessage = cm.getMessage();
-                String message = decrypt(encryptedMessage);
+                if (cm.getType() == ChatMessage.HELLO) {
+                    FileInputStream fin = new FileInputStream("/Library/Java/JavaVirtualMachines/jdk-13.jdk/Contents/Home/bin/ca_root.cer");
+                    CertificateFactory f = CertificateFactory.getInstance("X.509");
+                    X509Certificate certificate = (X509Certificate)f.generateCertificate(fin);
+                    PublicKey pk = certificate.getPublicKey();
+                    String encryptedMessage = this.encrypt(pk, "HELLO");
+                    this.writeMsg(encryptedMessage);
+                } else {
+                    String encryptedMessage = cm.getMessage();
+                    String message = decrypt(encryptedMessage);
 
-                // Switch on the type of message receive
-                switch (cm.getType()) {
-                    case ChatMessage.MESSAGE:
-                        SocketServerEngine.getInstance().broadcast(userName + ": " + message);
-                        break;
-                    case ChatMessage.LOGOUT:
-                        SocketServerGUI.getInstance().appendEvent(userName + " disconnected with a LOGOUT message.\n");
-                        /** If we finished the 'handling' of the assigned socket connection, add ourselves in the connectionHandling pool for future use */
-                        socketConnectionHandlerRelease();
+                    // Switch on the type of message receive
+                    switch (cm.getType()) {
+                        case ChatMessage.MESSAGE:
+                            SocketServerEngine.getInstance().broadcast(userName + ": " + message);
+                            break;
+                        case ChatMessage.LOGOUT:
+                            SocketServerGUI.getInstance().appendEvent(userName + " disconnected with a LOGOUT message.\n");
+                            /** If we finished the 'handling' of the assigned socket connection, add ourselves in the connectionHandling pool for future use */
+                            socketConnectionHandlerRelease();
 
-                        /** Also, inform the SocketServerEngine to remove us from the occupance pool... */
-                        SocketServerEngine.getInstance().removeConnHandlerOccp(this.handlerName);
+                            /** Also, inform the SocketServerEngine to remove us from the occupance pool... */
+                            SocketServerEngine.getInstance().removeConnHandlerOccp(this.handlerName);
 
-                        isSocketOpen = false;
-                        break;
-                    case ChatMessage.WHOISIN:
-                        SocketServerEngine.getInstance().printEstablishedSocketInfo();
-                        break;
-                    case ChatMessage.PRIVATEMESSAGE:
-                        String temp[] = decrypt(cm.getMessage()).split(",");
-                        int PortNo = Integer.parseInt(temp[0]);
-                        String Chat = temp[1];
+                            isSocketOpen = false;
+                            break;
+                        case ChatMessage.WHOISIN:
+                            SocketServerEngine.getInstance().printEstablishedSocketInfo();
+                            break;
+                        case ChatMessage.PRIVATEMESSAGE:
+                            String temp[] = decrypt(cm.getMessage()).split(",");
+                            int PortNo = Integer.parseInt(temp[0]);
+                            String Chat = temp[1];
 
-                        System.out.println("At Server :  " + PortNo + temp[1]);
-                        SocketServerEngine.getInstance().writeMsgSpecificClient(PortNo, Chat);
-                        break;
+                            System.out.println("At Server :  " + PortNo + temp[1]);
+                            SocketServerEngine.getInstance().writeMsgSpecificClient(PortNo, Chat);
+                            break;
+                    }
                 }
 
             } catch (ClassNotFoundException cnfe) {
@@ -465,6 +482,22 @@ public class SocketConnectionHandler implements Runnable {
             cipher.init(Cipher.ENCRYPT_MODE, skeySpec, iv);
 
             byte[] encrypted = cipher.doFinal(value.getBytes());
+            return Base64.encodeBase64String(encrypted);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
+    /**
+     * Method encrypting a given string with AES and CBC mode
+     */
+    public static String encrypt(PublicKey key, String msg) {
+        try {
+            Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
+            cipher.init(Cipher.ENCRYPT_MODE, key);
+
+            byte[] encrypted = cipher.doFinal(msg.getBytes());
             return Base64.encodeBase64String(encrypted);
         } catch (Exception ex) {
             ex.printStackTrace();
