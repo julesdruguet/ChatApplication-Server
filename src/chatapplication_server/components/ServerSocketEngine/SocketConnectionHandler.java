@@ -10,8 +10,9 @@ import chatapplication_server.components.ConfigManager;
 import chatapplication_server.statistics.ServerStatistics;
 
 import java.io.*;
-import javax.crypto.Cipher;
+import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.net.ssl.SSLSocket;
 import java.net.*;
@@ -19,13 +20,13 @@ import java.net.*;
 import org.apache.commons.codec.binary.Base64;
 
 import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
+import java.security.*;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Vector;
 
@@ -79,8 +80,11 @@ public class SocketConnectionHandler implements Runnable {
     private ObjectOutputStream socketWriter;
     private ObjectInputStream socketReader;
 
+    // Not used anymore because hardcoded
     private static String key = "aesEncryptionKey";
     private static final String initVector = "encryptionIntVec";
+    // New sym key
+    private SecretKeySpec symmetricKey;
 
     /**
      * Creates a new instance of SocketConnectionHandler
@@ -293,7 +297,7 @@ public class SocketConnectionHandler implements Runnable {
             }
 
             /**
-             * If we are notified/assigned to handle a socket connection... 
+             * If we are notified/assigned to handle a socket connection...
              * Call the receiveContent method for waiting data/requests from the Alix client. The Connection Handler
              * thread will stay in this method during the lifetime of the assigned socket connection
              */
@@ -326,15 +330,55 @@ public class SocketConnectionHandler implements Runnable {
                 cm = (ChatMessage) socketReader.readObject();
 
                 if (cm.getType() == ChatMessage.HELLO) {
-                    FileInputStream fin = new FileInputStream("/Library/Java/JavaVirtualMachines/jdk-13.jdk/Contents/Home/bin/ca_root.cer");
-                    CertificateFactory f = CertificateFactory.getInstance("X.509");
-                    X509Certificate certificate = (X509Certificate)f.generateCertificate(fin);
-                    PublicKey pk = certificate.getPublicKey();
-                    String encryptedMessage = this.encrypt(pk, "HELLO");
+                    // Get server private key
+                    String privateKeyPEM = "";
+                    BufferedReader br = new BufferedReader(new FileReader("certs/ca_key.pem"));
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        privateKeyPEM += line + "\n";
+                    }
+                    br.close();
+                    // Remove header and footer from pem file
+                    privateKeyPEM = privateKeyPEM.replace("-----BEGIN ENCRYPTED PRIVATE KEY-----\n", "");
+                    privateKeyPEM = privateKeyPEM.replace("-----END ENCRYPTED PRIVATE KEY-----", "");
+                    byte[] encoded = Base64.decodeBase64(privateKeyPEM);
+
+                    // Prepare private key decryption
+                    PBEKeySpec passKeySpec = new PBEKeySpec("123456".toCharArray());
+                    EncryptedPrivateKeyInfo encryptedKey = new EncryptedPrivateKeyInfo(encoded);
+                    SecretKeyFactory keyFac = SecretKeyFactory.getInstance(encryptedKey.getAlgName());
+                    SecretKey passKey = keyFac.generateSecret(passKeySpec);
+
+                    // Create PBE Cipher
+                    Cipher pbeCipher = Cipher.getInstance(encryptedKey.getAlgName());
+                    // Initialize PBE Cipher with key and parameters
+                    pbeCipher.init(Cipher.DECRYPT_MODE, passKey, encryptedKey.getAlgParameters());
+
+                    // Decrypt the private key
+
+                    byte [] encodedPrivateKey = pbeCipher.doFinal(encryptedKey.getEncryptedData());
+                    PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(encodedPrivateKey);
+                    KeyFactory kf = KeyFactory.getInstance("RSA");
+                    PrivateKey privKey = kf.generatePrivate(privateKeySpec);
+                    String encryptedMessage = encrypt(privKey, "HELLO");
                     this.writeMsg(encryptedMessage);
+                } else if (cm.getType() == ChatMessage.SYM_KEY) {
+                    // Decrypt message with server's private key
+                    FileInputStream fr = new FileInputStream("ca_root.cer");
+                    CertificateFactory cf = CertificateFactory.getInstance("X509");
+                    X509Certificate c = (X509Certificate) cf.generateCertificate(fr);
+                    String semiDecryptedMessage = decrypt(cm.getMessage(), c.getPublicKey());
+
+                    // Authenticate client by decrypting with its public key
+                    FileInputStream frCli = new FileInputStream("certs/Bob.cer");
+                    CertificateFactory cfCli = CertificateFactory.getInstance("X509");
+                    X509Certificate clientCert = (X509Certificate) cfCli.generateCertificate(frCli);
+                    PublicKey clientPublicKey = clientCert.getPublicKey();
+                    byte[] keyBytes = decrypt(semiDecryptedMessage, clientPublicKey).getBytes();
+                    this.symmetricKey = new SecretKeySpec(keyBytes, "AES");
                 } else {
                     String encryptedMessage = cm.getMessage();
-                    String message = decrypt(encryptedMessage);
+                    String message = decrypt(encryptedMessage, symmetricKey.getEncoded());
 
                     // Switch on the type of message receive
                     switch (cm.getType()) {
@@ -355,7 +399,7 @@ public class SocketConnectionHandler implements Runnable {
                             SocketServerEngine.getInstance().printEstablishedSocketInfo();
                             break;
                         case ChatMessage.PRIVATEMESSAGE:
-                            String temp[] = decrypt(cm.getMessage()).split(",");
+                            String temp[] = decrypt(cm.getMessage(), symmetricKey.getEncoded()).split(",");
                             int PortNo = Integer.parseInt(temp[0]);
                             String Chat = temp[1];
 
@@ -379,6 +423,18 @@ public class SocketConnectionHandler implements Runnable {
 
                 /** Change the socket status... */
                 isSocketOpen = false;
+            } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+                e.printStackTrace();
+            } catch (InvalidKeyException e) {
+                e.printStackTrace();
+            } catch (InvalidAlgorithmParameterException e) {
+                e.printStackTrace();
+            } catch (NoSuchPaddingException e) {
+                e.printStackTrace();
+            } catch (BadPaddingException e) {
+                e.printStackTrace();
+            } catch (IllegalBlockSizeException e) {
+                e.printStackTrace();
             }
         }
     }
@@ -455,7 +511,6 @@ public class SocketConnectionHandler implements Runnable {
      */
     public static String encrypt(String value, String key) {
         try {
-            SocketConnectionHandler.key = key;
             IvParameterSpec iv = new IvParameterSpec(initVector.getBytes(StandardCharsets.UTF_8));
             SecretKeySpec skeySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "AES");
 
@@ -512,6 +567,19 @@ public class SocketConnectionHandler implements Runnable {
         return encrypt(value, key);
     }
 
+    private String encrypt(PrivateKey privKey, String msg) {
+        try {
+            Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
+            cipher.init(Cipher.ENCRYPT_MODE, privKey);
+
+            byte[] encrypted = cipher.doFinal(msg.getBytes());
+            return Base64.encodeBase64String(encrypted);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
     /**
      * Method encrypting a given cipher with AES and CBC mode
      */
@@ -549,6 +617,23 @@ public class SocketConnectionHandler implements Runnable {
             ex.printStackTrace();
         }
 
+        return null;
+    }
+
+    /**
+     * Method encrypting a given cipher with AES and CBC mode
+     */
+    public static String decrypt(String encrypted, PublicKey key) {
+        try {
+            Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
+            cipher.init(Cipher.DECRYPT_MODE, key);
+
+            byte[] original = cipher.doFinal(Base64.decodeBase64(encrypted));
+
+            return new String(original);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
         return null;
     }
 

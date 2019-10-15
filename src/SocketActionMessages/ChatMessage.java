@@ -27,7 +27,7 @@ public class ChatMessage implements Serializable
 
     // LOGOUT to disconnect from the Server
 
-    public static final int WHOISIN = 0, MESSAGE = 1, LOGOUT = 2,PRIVATEMESSAGE = 3,HELLO=4;
+    public static final int WHOISIN = 0, MESSAGE = 1, LOGOUT = 2,PRIVATEMESSAGE = 3,HELLO=4,SYM_KEY=5;
 
     private int type;
 

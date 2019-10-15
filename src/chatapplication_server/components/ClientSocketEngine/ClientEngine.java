@@ -12,15 +12,25 @@ import chatapplication_server.components.ServerSocketEngine.SocketConnectionHand
 import chatapplication_server.components.ServerSocketEngine.SocketServerEngine;
 import chatapplication_server.components.ServerSocketEngine.SocketServerGUI;
 import chatapplication_server.components.base.GenericThreadedComponent;
+import chatapplication_server.components.base.IComponent;
 import chatapplication_server.exception.ComponentInitException;
 import chatapplication_server.statistics.ServerStatistics;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.*;
 
+import java.math.BigInteger;
 import java.net.*;
+import java.security.*;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.Scanner;
+
+import static chatapplication_server.components.ServerSocketEngine.SocketConnectionHandler.decrypt;
+import static chatapplication_server.components.ServerSocketEngine.SocketConnectionHandler.encrypt;
 
 /**
  * @author atgianne
@@ -56,6 +66,15 @@ public class ClientEngine extends GenericThreadedComponent {
      * Singleton instance of the SocketServerEngine component
      */
     private static ClientEngine componentInstance = null;
+
+    /**
+     * Mutual key set with server
+     */
+    private SecretKeySpec symmetricKey;
+
+    final String keyStore = "certs/BobKeyStore.jks"; // keystore file should exist in the program folder of the application
+    final String keyStorePass = "123456"; // password of keystore
+    final String keyPass = "123456";
 
     /**
      * Creates a new instance of SocketServerEngine
@@ -125,6 +144,67 @@ public class ClientEngine extends GenericThreadedComponent {
 
         String msg = "HELLO";
         sendMessage(new ChatMessage(ChatMessage.HELLO, msg));
+        String encryptedMsg = null;
+
+        try {
+            encryptedMsg = (String) this.getStreamReader().readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        try {
+            msg = decrypt(encryptedMsg, this.getServerPublicKey());
+        } catch (FileNotFoundException | CertificateException e) {
+            e.printStackTrace();
+        }
+
+        if (msg.equals("HELLO")) {
+            /* If the server is authenticated, we prove to the server that we are who we say we are */
+            /* when starting DH for symmetricKey agreement */
+            java.security.KeyStore ks = null;
+            try {
+                ks = java.security.KeyStore.getInstance("JKS");
+                java.io.FileInputStream ksfis = new java.io.FileInputStream(keyStore);
+                java.io.BufferedInputStream ksbufin = new java.io.BufferedInputStream(ksfis);
+                ks.load(ksbufin, keyStorePass.toCharArray());
+
+                // list aliases in the keystore
+                java.io.FileOutputStream fos = null;
+                for (java.util.Enumeration theAliases = ks.aliases(); theAliases.hasMoreElements(); ) {
+                    String alias = (String) theAliases.nextElement();
+                    java.security.cert.Certificate cert = ks.getCertificate(alias);
+                    java.security.PrivateKey privateKey = (java.security.PrivateKey) ks.getKey(alias, keyPass.toCharArray());
+                }
+            } catch (KeyStoreException | IOException | CertificateException | UnrecoverableKeyException | NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            }
+
+            // Generate the symmetric key
+            SecureRandom random = new SecureRandom();
+            byte[] keyBytes = new byte[16];
+            random.nextBytes(keyBytes);
+            this.symmetricKey = new SecretKeySpec(keyBytes, "AES");
+            msg = symmetricKey.getEncoded().toString();
+            try {
+                encryptedMsg = encrypt(msg, this.getServerPublicKey().getEncoded());
+            } catch (FileNotFoundException | CertificateException e) {
+                e.printStackTrace();
+            }
+            sendMessage(new ChatMessage(ChatMessage.SYM_KEY, encryptedMsg));
+
+            encryptedMsg = null;
+
+            try {
+                encryptedMsg = (String) this.getStreamReader().readObject();
+            } catch (IOException | ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+            try {
+                msg = decrypt(encryptedMsg, this.getServerPublicKey());
+            } catch (FileNotFoundException | CertificateException e) {
+                e.printStackTrace();
+            }
+
+        }
 
         super.initialize();
     }
@@ -167,7 +247,7 @@ public class ClientEngine extends GenericThreadedComponent {
             // read message from user
             //String msg = scan.nextLine();
             String readMsg = ClientSocketGUI.getInstance().getPublicMsgToBeSent();
-            String msg = SocketConnectionHandler.encrypt(readMsg);
+            String msg = encrypt(readMsg, symmetricKey.getEncoded());
 
             if (msg.equals("")) {
                 continue;
@@ -194,6 +274,13 @@ public class ClientEngine extends GenericThreadedComponent {
 
     public ObjectInputStream getStreamReader() {
         return socketReader;
+    }
+
+    public PublicKey getServerPublicKey() throws FileNotFoundException, CertificateException {
+        FileInputStream fr = new FileInputStream("ca_root.cer");
+        CertificateFactory cf = CertificateFactory.getInstance("X509");
+        X509Certificate c = (X509Certificate) cf.generateCertificate(fr);
+        return c.getPublicKey();
     }
 
     /**
@@ -224,5 +311,9 @@ public class ClientEngine extends GenericThreadedComponent {
 
         /** Invoke our parent's method to stop the thread running the secure socket server... */
         super.shutdown();
+    }
+
+    public SecretKeySpec getSymmetricKey() {
+        return symmetricKey;
     }
 }

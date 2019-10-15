@@ -23,7 +23,7 @@ public class AccessCertificates {
 
   public static void main( String[] args ) throws Exception {
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-    final String keyStore = "BobKeyStore.jks"; // keystore file should exisit in the program folder of the application
+    final String keyStore = "BobKeyStore.jks"; // keystore file should exist in the program folder of the application
     final String keyStorePass = "123456"; // password of keystore
     final String keyPass = "123456";
 
